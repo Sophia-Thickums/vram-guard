@@ -112,5 +112,44 @@ def main():
     else:
         print(__doc__)
 
+
+def selftest() -> int:
+    """Prove the guard fails SHUT. A guard that cannot say 'not safe' is decoration."""
+    import sys as _sys
+    print("vram_guard --selftest")
+    print("=" * 60)
+    ok = True
+
+    used = vram_used_gb()
+    readable = used is not None
+    ok &= readable
+    print(f"  {'PASS' if readable else 'FAIL'}  reads mem_info_vram_used -> {used}")
+
+    # MUST FAIL SHUT: with an unreadable card path, safe_to_allocate must be (False, ...)
+    global CARD
+    real = CARD
+    try:
+        CARD = "/nonexistent/card/that/does/not/exist"
+        allowed, why = safe_to_allocate()
+        shut = (allowed is False)
+        ok &= shut
+        print(f"  {'PASS' if shut else 'FAIL'}  unreadable card -> allowed={allowed} ({why}) "
+              f"-- must be False (fail-shut)")
+    finally:
+        CARD = real
+
+    allowed2, why2 = safe_to_allocate()
+    definite = isinstance(allowed2, bool)
+    ok &= definite
+    print(f"  {'PASS' if definite else 'FAIL'}  real hardware -> allowed={allowed2} ({why2})")
+
+    print("=" * 60)
+    print("selftest " + ("PASSED" if ok else "FAILED"))
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    import sys as _s
+    if "--selftest" in _s.argv:
+        _s.exit(selftest())
     main()
