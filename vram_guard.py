@@ -24,9 +24,14 @@ Design laws
    capture pipe aimed at the wrong window is still unseen work spent.
 
 Usage:
-  python3 vram_guard.py check              # is it safe to touch the GPU?
-  python3 vram_guard.py watch --class GameExe   # loop: safe? foreground? act
-  python3 vram_guard.py foreground         # what is the active window (KWin)
+  python3 vram_guard.py check        # is it safe to touch the GPU?
+  python3 vram_guard.py gate         # is a game the front window?
+  python3 vram_guard.py fg           # what is the active window
+  python3 vram_guard.py watch [SEC]  # loop on the residency check (default 5 s)
+  python3 vram_guard.py --selftest   # proves the guard can say NOT-SAFE
+
+Env: VRAMGUARD_CARD (device path), VRAMGUARD_LIMIT_GB (default 8),
+     VRAMGUARD_GAME_CLASSES (comma-separated window classes)
 """
 import json, os, sys, time, subprocess
 from pathlib import Path
@@ -72,15 +77,24 @@ def kwin_active_window():
         pass
     return None, None
 
+def decide_foreground(caption, resource_class, game_classes=None):
+    """The foreground decision, with no window system in the way.
+
+    Split from is_game_foreground so the rule can be checked against known captions
+    instead of against whatever happens to be on screen during a test run.
+    """
+    classes = set(game_classes or GAME_CLASSES_DEFAULT)
+    if not caption and not resource_class:
+        return True, "foreground unknown (fail-shut: treat as occupied)"
+    if resource_class and resource_class.lower() in {c.lower() for c in classes}:
+        return True, f"game foreground: {resource_class}"
+    return False, f"non-game foreground: {caption[:60]!r}"
+
+
 def is_game_foreground(game_classes=None):
     """Gate for screen-touching helpers. Unknown foreground = treat as game (fail-shut)."""
-    classes = set(game_classes or GAME_CLASSES_DEFAULT)
     cap, cls = kwin_active_window()
-    if not cap and not cls:
-        return True, "foreground unknown (fail-shut: treat as occupied)"
-    if cls and cls.lower() in {c.lower() for c in classes}:
-        return True, f"game foreground: {cls}"
-    return False, f"non-game foreground: {cap[:60]!r}"
+    return decide_foreground(cap, cls, game_classes)
 
 GAME_CLASSES_DEFAULT = [
     # extend via VRAMGUARD_GAME_CLASSES (comma-separated)
